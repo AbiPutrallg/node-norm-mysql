@@ -1,0 +1,21 @@
+{
+  "name": "norm-mongo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ganesha <reekoheek@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "mongodb": "^2.2.21",
+    "node-norm": "xinix-technology/node-norm#master"
+  },
+  "devDependencies": {
+    "eslint": "^3.14.0",
+    "eslint-config-standard": "^6.2.1",
+    "eslint-plugin-promise": "^3.4.0",
+    "eslint-plugin-standard": "^2.0.1"
+  }
+}
