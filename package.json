@@ -1,5 +1,5 @@
 {
-  "name": "norm-mongo",
+  "name": "node-norm-mysql",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -9,7 +9,7 @@
   "author": "Ganesha <reekoheek@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "mongodb": "^2.2.21",
+    "mysql": "^2.13.0",
     "node-norm": "xinix-technology/node-norm#master"
   },
   "devDependencies": {
