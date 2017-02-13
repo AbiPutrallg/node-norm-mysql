@@ -76,7 +76,7 @@ class Mysql extends Connection {
     await this.query(sql, data);
   }
 
-  getWhere (query = {}) {
+  getWhere (query) {
     let wheres = [];
     let data = [];
     for (let key in query._criteria) {
@@ -93,9 +93,42 @@ class Mysql extends Connection {
     return [ `WHERE ${wheres.join(' AND ')}`, data ];
   }
 
+  getOrderBy (query) {
+    let orderBys = [];
+    for (let key in query._sorts) {
+      let val = query._sorts[key];
+
+      orderBys.push(`${key} ${val ? 'ASC' : 'DESC'}`);
+    }
+
+    if (!orderBys.length) {
+      return;
+    }
+
+    return `ORDER BY ${orderBys.join(', ')}`;
+  }
+
   async load (query, callback = () => {}) {
+    let sqlArr = [ 'SELECT *', `FROM ${query.schema.name}` ];
     let [ wheres, data ] = this.getWhere(query);
-    let sql = `SELECT * FROM ${query.schema.name} ${wheres}`;
+    if (wheres) {
+      sqlArr.push(wheres);
+    }
+
+    let orderBys = this.getOrderBy(query);
+    if (orderBys) {
+      sqlArr.push(orderBys);
+    }
+
+    if (query._limit >= 0) {
+      sqlArr.push(`LIMIT ${query._limit}`);
+
+      if (query._skip > 0) {
+        sqlArr.push(`OFFSET ${query._skip}`);
+      }
+    }
+
+    let sql = sqlArr.join(' ');
     let { results } = await this.query(sql, data);
     return results.map(row => {
       callback(row);
@@ -111,11 +144,12 @@ class Mysql extends Connection {
     await this.query(`DROP TABLE ${query.schema.name}`);
   }
 
-  async insert (query) {
+  async insert (query, callback) {
     return Promise.all(await query._inserts.map(async insert => {
       let row = Object.assign({}, insert);
       let { results: { insertId } } = await this.query(`INSERT INTO ${query.schema.name} SET ?`, row);
       row.id = insertId;
+      callback(row);
       return row;
     }));
   }
