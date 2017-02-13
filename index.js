@@ -56,6 +56,8 @@ class Mysql extends Connection {
         return await this.insert(query, callback);
       case 'update':
         return await this.update(query, callback);
+      case 'delete':
+        return await this.delete(query, callback);
       case 'truncate':
         await this.truncate(query);
         return;
@@ -65,6 +67,13 @@ class Mysql extends Connection {
       default:
         throw new Error(`Unimplemented persist ${query._method}`);
     }
+  }
+
+  async delete (query, callback) {
+    let [ wheres, data ] = this.getWhere(query);
+    let sql = `DELETE FROM ${query.schema.name} ${wheres}`;
+
+    await this.query(sql, data);
   }
 
   async update (query, callback) {
