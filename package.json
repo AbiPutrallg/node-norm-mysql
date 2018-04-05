@@ -1,22 +1,29 @@
 {
   "name": "node-norm-mysql",
-  "version": "1.0.0",
-  "description": "",
+  "version": "1.1.0",
+  "description": "Mysql adapter for norm",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --harmony-async-await"
+    "test": "npx mocha test/**"
   },
-  "author": "Ganesha <reekoheek@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reekoheek/node-norm-mysql.git"
+  },
+  "author": "Ganesha <reekoheek@gmail.com> (http://sagara.id)",
   "license": "MIT",
-  "dependencies": {
-    "mysql": "^2.13.0",
-    "node-norm": "xinix-technology/node-norm#master"
-  },
   "devDependencies": {
-    "eslint": "^3.14.0",
-    "eslint-config-standard": "^6.2.1",
-    "eslint-plugin-promise": "^3.4.0",
-    "eslint-plugin-standard": "^2.0.1",
-    "mocha": "^3.2.0"
+    "babel-eslint": "^8.2.2",
+    "eslint": "^4.19.1",
+    "eslint-config-standard": "^11.0.0",
+    "eslint-config-xinix": "^1.0.4",
+    "eslint-plugin-import": "^2.10.0",
+    "eslint-plugin-node": "^6.0.1",
+    "eslint-plugin-promise": "^3.7.0",
+    "eslint-plugin-standard": "^3.0.1",
+    "node-norm": "^0.6.1"
+  },
+  "dependencies": {
+    "mysql": "^2.15.0"
   }
 }

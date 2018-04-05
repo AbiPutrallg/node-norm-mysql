@@ -1,124 +1,72 @@
 const Connection = require('node-norm/connection');
 const mysql = require('mysql');
 
-const TYPES = {
-  'string': 'varchar(255)',
-  'integer': 'int',
-  'boolean': 'int',
-  'reference': 'int',
-  'double': 'double',
-};
-
 const OPERATORS = {
   'eq': '=',
   'gt': '>',
   'lt': '<',
   'gte': '>=',
   'lte': '<=',
+  'like': 'like',
 };
 
 class Mysql extends Connection {
-  constructor ({ manager, name, schemas, host = '127.0.0.1', user = 'root', password, database }) {
-    super({ manager, name, schemas });
+  constructor (options) {
+    super(options);
 
+    let { host, user, password, database } = options;
     this.host = host;
     this.user = user;
     this.password = password;
     this.database = database;
+
+    this.conn = mysql.createConnection(this);
   }
 
-  async initialize () {
-    for (let name in this.schemas) {
-      await this.prepareTable(this.schemas[name]);
-    }
+  _mysqlQuery (sql, params) {
+    return new Promise((resolve, reject) => {
+      this.conn.query(sql, params, (err, result, fields) => {
+        if (err) {
+          return reject(err);
+        }
+
+        resolve({ result, fields });
+      });
+    });
   }
 
-  async prepareTable (schema) {
-    try {
-      await this.query(`DESCRIBE ${schema.name}`);
-    } catch (err) {
-      if (err.code !== 'ER_NO_SUCH_TABLE') {
-        throw err;
-      }
-      let fieldDefinitions = [ 'id INT AUTO_INCREMENT' ];
-      for (let index in schema.fields) {
-        let field = schema.fields[index];
-        let type = TYPES[field.kind] || 'varchar(255)';
-        fieldDefinitions.push(`${field.name} ${type}`);
-      }
-      await this.query(`CREATE TABLE ${schema.name} (\n  ${fieldDefinitions.join(',\n  ')},\n  PRIMARY KEY(id)\n)`);
-    }
-  }
-
-  async persist (query, callback = () => {}) {
-    switch (query._method) {
-      case 'insert':
-        return await this.insert(query, callback);
-      case 'update':
-        return await this.update(query, callback);
-      case 'delete':
-        return await this.delete(query, callback);
-      case 'truncate':
-        await this.truncate(query);
-        return;
-      case 'drop':
-        await this.drop(query);
-        return;
-      default:
-        throw new Error(`Unimplemented persist ${query._method}`);
-    }
-  }
-
-  async delete (query, callback) {
-    let [ wheres, data ] = this.getWhere(query);
-    let sql = `DELETE FROM ${query.schema.name} ${wheres}`;
-
-    await this.query(sql, data);
-  }
-
-  async update (query, callback) {
-    let [ wheres, data ] = this.getWhere(query);
-    let sql = `UPDATE ${query.schema.name} SET ? ${wheres}`;
-
-    data.unshift(query._sets);
-
-    await this.query(sql, data);
-  }
-
-  getWhere (query) {
-    let wheres = [];
-    let data = [];
-    for (let key in query._criteria) {
-      let value = query._criteria[key];
-      let [ field, operator = 'eq' ] = key.split('!');
-      data.push(value);
-      wheres.push(`${field} ${OPERATORS[operator]} ?`);
+  async insert (query, callback = () => {}) {
+    let fieldNames = query.schema.fields.map(field => field.name);
+    if (!fieldNames.length) {
+      fieldNames = query._inserts.reduce((fieldNames, row) => {
+        for (let f in row) {
+          if (fieldNames.indexOf(f) === -1) {
+            fieldNames.push(f);
+          }
+        }
+        return fieldNames;
+      }, []);
     }
 
-    if (!wheres.length) {
-      return [];
-    }
+    let placeholder = fieldNames.map(f => '?');
+    let sql = `INSERT INTO ${query.schema.name} (${fieldNames.join(',')}) VALUES (${placeholder})`;
 
-    return [ `WHERE ${wheres.join(' AND ')}`, data ];
-  }
+    let changes = 0;
+    await Promise.all(query._inserts.map(async row => {
+      let rowData = fieldNames.map(f => row[f]);
 
-  getOrderBy (query) {
-    let orderBys = [];
-    for (let key in query._sorts) {
-      let val = query._sorts[key];
+      let { result } = await this._mysqlQuery(sql, rowData);
+      row.id = result.insertId;
+      changes += result.affectedRows;
 
-      orderBys.push(`${key} ${val ? 'ASC' : 'DESC'}`);
-    }
+      callback(row);
+    }));
 
-    if (!orderBys.length) {
-      return;
-    }
-
-    return `ORDER BY ${orderBys.join(', ')}`;
+    return changes;
   }
 
   async load (query, callback = () => {}) {
-    let sqlArr = [ 'SELECT *', `FROM ${query.schema.name}` ];
+    let sqlArr = [ `SELECT * FROM ${mysql.escapeId(query.schema.name)}` ];
     let [ wheres, data ] = this.getWhere(query);
     if (wheres) {
       sqlArr.push(wheres);
@@ -138,56 +86,75 @@ class Mysql extends Connection {
     }
 
     let sql = sqlArr.join(' ');
-    let { results } = await this.query(sql, data);
-    return results.map(row => {
+
+    let { result } = await this._mysqlQuery(sql, data);
+    return result.map(row => {
       callback(row);
       return row;
     });
   }
 
-  async truncate (query) {
-    await this.query(`TRUNCATE TABLE ${query.schema.name}`);
-  }
-
-  async drop (query) {
-    await this.query(`DROP TABLE ${query.schema.name}`);
-  }
-
-  async insert (query, callback) {
-    return Promise.all(await query._inserts.map(async insert => {
-      let row = Object.assign({}, insert);
-      let { results: { insertId } } = await this.query(`INSERT INTO ${query.schema.name} SET ?`, row);
-      row.id = insertId;
-      callback(row);
-      return row;
-    }));
-  }
-
-  query (sql, data) {
-    return new Promise((resolve, reject) => {
-      console.log('SQL:', sql, 'DATA:', data ? JSON.stringify(data) : '');
-      let conn = this.getConnection();
-      conn.query(sql, data, (err, results, fields) => {
-        if (err) {
-          let newErr = new Error(`MYSQL_ERROR: ${err.message} SQL[${sql}] PARAMS[${JSON.stringify(data)}]`);
-          newErr.code = err.code;
-          newErr.originalError = err;
-          return reject(newErr);
-        }
-
-        resolve({ results, fields });
-      });
-    });
-  }
-
-  getConnection () {
-    if (!this._connection) {
-      this._connection = mysql.createConnection(this);
-
-      this._connection.connect();
+  async delete (query, callback) {
+    let [ wheres, data ] = this.getWhere(query);
+    let sqlArr = [`DELETE FROM ${query.schema.name}`];
+    if (wheres) {
+      sqlArr.push(wheres);
     }
 
-    return this._connection;
+    let sql = sqlArr.join(' ');
+
+    await this._mysqlQuery(sql, data);
+  }
+
+  getOrderBy (query) {
+    let orderBys = [];
+    for (let key in query._sorts) {
+      let val = query._sorts[key];
+
+      orderBys.push(`${mysql.escapeId(key)} ${val ? 'ASC' : 'DESC'}`);
+    }
+
+    if (!orderBys.length) {
+      return;
+    }
+
+    return `ORDER BY ${orderBys.join(', ')}`;
+  }
+
+  async update (query) {
+    let keys = Object.keys(query._sets);
+
+    let params = keys.map(k => query._sets[k]);
+    let placeholder = keys.map(k => `${mysql.escapeId(k)} = ?`);
+
+    let [ wheres, data ] = this.getWhere(query);
+    let sql = `UPDATE ${mysql.escapeId(query.schema.name)} SET ${placeholder.join(', ')} ${wheres}`;
+    let { result } = await this._mysqlQuery(sql, params.concat(data));
+
+    return result.affectedRows;
+  }
+
+  getWhere (query) {
+    let wheres = [];
+    let data = [];
+    for (let key in query._criteria) {
+      let value = query._criteria[key];
+      let [ field, operator = 'eq' ] = key.split('!');
+
+      // add by januar: for chek if operator like value change to %
+      if (operator === 'like') {
+        value = `%${value}%`;
+      }
+
+      data.push(value);
+      wheres.push(`${mysql.escapeId(field)} ${OPERATORS[operator]} ?`);
+    }
+
+    if (!wheres.length) {
+      return [];
+    }
+
+    return [ `WHERE ${wheres.join(' AND ')}`, data ];
   }
 }
 
