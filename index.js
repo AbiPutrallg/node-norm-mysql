@@ -156,6 +156,42 @@ class Mysql extends Connection {
 
     return [ `WHERE ${wheres.join(' AND ')}`, data ];
   }
+
+  begin () {
+    console.log('begin');
+    return new Promise((resolve, reject) => {
+      this.conn.beginTransaction(err => {
+        if (err) {
+          return reject(err);
+        }
+        resolve();
+      });
+    });
+  }
+
+  commit () {
+    console.log('commit');
+    return new Promise((resolve, reject) => {
+      this.conn.commit(err => {
+        if (err) {
+          return reject(err);
+        }
+        resolve();
+      });
+    });
+  }
+
+  rollback () {
+    console.log('rollback');
+    return new Promise((resolve, reject) => {
+      this.conn.rollback(err => {
+        if (err) {
+          return reject(err);
+        }
+        resolve();
+      });
+    });
+  }
 }
 
 module.exports = Mysql;
