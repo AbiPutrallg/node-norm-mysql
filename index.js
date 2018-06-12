@@ -134,12 +134,34 @@ class Mysql extends Connection {
     return result.affectedRows;
   }
 
+  getOr(query){
+    let wheres = [];
+    let data = [];
+    for (let i = 0; i < query.length; i++) {
+        let key = Object.keys(query[i])[0];
+        let value = Object.values(query[i])[0];
+        let [ field, operator = 'eq' ] = key.split('!');
+        if(operator == 'like'){
+          value ='%'+value +'%';
+        }
+        data.push(value);
+        wheres.push(`${field} ${OPERATORS[operator]} ?`);
+    }
+    return {where : `(${wheres.join(' OR ')})`,data:data };
+  }
+
   getWhere (query) {
     let wheres = [];
     let data = [];
     for (let key in query._criteria) {
       let value = query._criteria[key];
       let [ field, operator = 'eq' ] = key.split('!');
+      if(key === '!or'){
+        let or = this.getOr(value);
+        wheres.push(or.where);
+        data = data.concat(or.data);
+        continue;
+      }
 
       // add by januar: for chek if operator like value change to %
       if (operator === 'like') {
