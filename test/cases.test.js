@@ -1,10 +1,7 @@
-/* globals describe it beforeEach afterEach */
-
 const assert = require('assert');
 const mysql = require('mysql');
 const Manager = require('node-norm');
-const Model = require('node-norm/model');
-const util = require('util');
+
 const config = {
   adapter: require('../'),
   host: process.env.DB_HOST || 'localhost',
@@ -51,28 +48,28 @@ describe('cases', () => {
   it('create new record', async () => {
     await manager.runSession(async session => {
       let { inserted, rows } = await session.factory('foo').insert({ foo: 'bar' }).insert({ foo: 'bar1' }).save();
-      assert.equal(inserted, 2);
-      assert.equal(rows.length, 2);
+      assert.strictEqual(inserted, 2);
+      assert.strictEqual(rows.length, 2);
 
       let { results } = await query('SELECT * from foo');
-      assert.equal(results.length, 4);
+      assert.strictEqual(results.length, 4);
     });
   });
 
   it('read record', async () => {
     await manager.runSession(async session => {
       let foos = await session.factory('foo').all();
-      assert.equal(foos.length, 2);
+      assert.strictEqual(foos.length, 2);
     });
   });
 
   it('update record', async () => {
     await manager.runSession(async session => {
       let { affected } = await session.factory('foo', 2).set({ foo: 'bar' }).save();
-      assert.equal(affected, 1);
+      assert.strictEqual(affected, 1);
       let { results } = await query('SELECT * FROM foo WHERE id = 2');
-      assert.equal(results.length, 1);
-      assert.equal(results[0].foo, 'bar');
+      assert.strictEqual(results.length, 1);
+      assert.strictEqual(results[0].foo, 'bar');
     });
   });
 
@@ -81,7 +78,7 @@ describe('cases', () => {
       await session.factory('foo').delete();
 
       let { results } = await query('SELECT * FROM foo');
-      assert.equal(results.length, 0);
+      assert.strictEqual(results.length, 0);
     });
   });
 });

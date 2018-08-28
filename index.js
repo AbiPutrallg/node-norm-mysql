@@ -1,5 +1,6 @@
 const Connection = require('node-norm/connection');
 const mysql = require('mysql');
+const debug = require('debug')('node-norm-mysql:index');
 
 const OPERATORS = {
   'eq': '=',
@@ -29,12 +30,16 @@ class Mysql extends Connection {
   }
 
   _dberror (err) {
-    console.log('db error', err);
-    if(err.code === 'PROTOCOL_CONNECTION_LOST') { // Connection to the MySQL server is usually
-      this.createConnection();                         // lost due to either server restart, or a
+    debug('Database error', err);
+
+    // Connection to the MySQL server is usually
+    // lost due to either server restart
+    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+      this.createConnection();
       return;
-    } 
-    throw err;                                  // server variable configures this)
+    }
+
+    throw err;
   }
 
   _mysqlQuery (sql, params) {
@@ -172,7 +177,6 @@ class Mysql extends Connection {
   }
 
   begin () {
-    console.log('begin');
     return new Promise((resolve, reject) => {
       this.conn.beginTransaction(err => {
         if (err) {
@@ -184,7 +188,6 @@ class Mysql extends Connection {
   }
 
   commit () {
-    console.log('commit');
     return new Promise((resolve, reject) => {
       this.conn.commit(err => {
         if (err) {
@@ -196,7 +199,6 @@ class Mysql extends Connection {
   }
 
   rollback () {
-    console.log('rollback');
     return new Promise((resolve, reject) => {
       this.conn.rollback(err => {
         if (err) {
