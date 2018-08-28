@@ -20,7 +20,21 @@ class Mysql extends Connection {
     this.password = password;
     this.database = database;
 
+    this.createConnection();
+  }
+
+  createConnection () {
     this.conn = mysql.createConnection(this);
+    this.conn.on('error', this._dberror.bind(this));
+  }
+
+  _dberror (err) {
+    console.log('db error', err);
+    if(err.code === 'PROTOCOL_CONNECTION_LOST') { // Connection to the MySQL server is usually
+      this.createConnection();                         // lost due to either server restart, or a
+      return;
+    } 
+    throw err;                                  // server variable configures this)
   }
 
   _mysqlQuery (sql, params) {
