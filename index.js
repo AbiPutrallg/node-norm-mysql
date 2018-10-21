@@ -68,7 +68,7 @@ class Mysql extends Connection {
     }
 
     let placeholder = fieldNames.map(f => '?');
-    let sql = `INSERT INTO ${query.schema.name} (${fieldNames.join(',')}) VALUES (${placeholder})`;
+    let sql = `INSERT INTO ${mysql2.escapeId(query.schema.name)} (${fieldNames.join(',')}) VALUES (${placeholder})`;
 
     let changes = 0;
     await Promise.all(query.rows.map(async row => {
@@ -115,7 +115,7 @@ class Mysql extends Connection {
 
   async delete (query, callback) {
     let [ wheres, data ] = this.getWhere(query);
-    let sqlArr = [`DELETE FROM ${query.schema.name}`];
+    let sqlArr = [`DELETE FROM ${mysql2.escapeId(query.schema.name)}`];
     if (wheres) {
       sqlArr.push(wheres);
     }
@@ -214,7 +214,7 @@ class Mysql extends Connection {
   }
 
   async count (query, useSkipAndLimit = false) {
-    let sqlArr = [ `SELECT count(*) AS ${mysql2.escapeId('count')} FROM ${query.schema.name}` ];
+    let sqlArr = [ `SELECT count(*) AS ${mysql2.escapeId('count')} FROM ${mysql2.escapeId(query.schema.name)}` ];
     let [ wheres, data ] = this.getWhere(query);
     if (wheres) {
       sqlArr.push(wheres);
@@ -232,9 +232,7 @@ class Mysql extends Connection {
 
     let sql = sqlArr.join(' ');
 
-    let db = await this.getDb();
-
-    let row = await db.get(sql, data);
+    let { result: [ row ] } = await this.dbQuery(sql, data);
     return row.count;
   }
 

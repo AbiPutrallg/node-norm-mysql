@@ -97,4 +97,16 @@ describe('cases', () => {
       await manager.end();
     }
   });
+
+  it('count record', async () => {
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let count = await session.factory('foo').count();
+        assert.strictEqual(count, 2);
+      });
+    } finally {
+      await manager.end();
+    }
+  });
 });
