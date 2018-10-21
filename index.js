@@ -213,6 +213,31 @@ class Mysql extends Connection {
     await conn.rollback();
   }
 
+  async count (query, useSkipAndLimit = false) {
+    let sqlArr = [ `SELECT count(*) AS ${mysql2.escapeId('count')} FROM ${query.schema.name}` ];
+    let [ wheres, data ] = this.getWhere(query);
+    if (wheres) {
+      sqlArr.push(wheres);
+    }
+
+    if (useSkipAndLimit) {
+      if (query.length >= 0) {
+        sqlArr.push(`LIMIT ${query.length}`);
+
+        if (query.offset > 0) {
+          sqlArr.push(`OFFSET ${query.offset}`);
+        }
+      }
+    }
+
+    let sql = sqlArr.join(' ');
+
+    let db = await this.getDb();
+
+    let row = await db.get(sql, data);
+    return row.count;
+  }
+
   async end () {
     let conn = await this.getConnection();
     this.connPromise = undefined;
