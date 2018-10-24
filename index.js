@@ -20,29 +20,26 @@ class Mysql extends Connection {
     this.user = user;
     this.password = password;
     this.database = database;
-
-    this.connPromise = mysql2.createConnection({ host, user, password, database });
-    this.connPromise.then(conn => conn.on('error', this.onDbError.bind(this)));
   }
 
   getConnection () {
     if (!this.connPromise) {
-      throw new Error('Connection already ended');
+      let { host, user, password, database } = this;
+      this.connPromise = mysql2.createConnection({ host, user, password, database });
+      this.connPromise.then(conn => conn.on('error', this.dbOnError.bind(this)));
     }
 
     return this.connPromise;
   }
 
-  onDbError (err) {
+  dbOnError (err) {
     debug('Database error', err);
 
     // Connection to the MySQL server is usually
     // lost due to either server restart
     if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-      let { host, user, password, database } = this;
-      this.connPromise = mysql2.createConnection({ host, user, password, database });
-      this.connPromise.then(conn => conn.on('error', this.onError.bind(this)));
-      return;
+      this.connPromise = undefined;
+      throw new Error('Connection already ended');
     }
 
     throw err;
