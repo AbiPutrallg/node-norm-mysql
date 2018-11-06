@@ -65,7 +65,11 @@ class Mysql extends Connection {
     }
 
     let placeholder = fieldNames.map(f => '?');
-    let sql = `INSERT INTO ${mysql2.escapeId(query.schema.name)} (${fieldNames.join(', ')}) VALUES (${placeholder})`;
+    let sql = `
+INSERT INTO ${mysql2.escapeId(query.schema.name)}
+  (${fieldNames.map(f => mysql2.escapeId(f)).join(', ')})
+VALUES
+  (${placeholder})`;
 
     let changes = 0;
     await Promise.all(query.rows.map(async row => {
