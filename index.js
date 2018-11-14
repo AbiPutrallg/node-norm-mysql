@@ -64,16 +64,27 @@ class Mysql extends Connection {
       }, []);
     }
 
-    let placeholder = fieldNames.map(f => '?');
-    let sql = `
-INSERT INTO ${mysql2.escapeId(query.schema.name)}
-  (${fieldNames.map(f => mysql2.escapeId(f)).join(', ')})
-VALUES
-  (${placeholder})`;
+    let placeholder = fieldNames.map(f => '?').join(', ');
+    let sql = `INSERT INTO ${mysql2.escapeId(query.schema.name)}` +
+      ` (${fieldNames.map(f => mysql2.escapeId(f)).join(', ')})` +
+      ` VALUES (${placeholder})`;
 
     let changes = 0;
     await Promise.all(query.rows.map(async row => {
-      let rowData = fieldNames.map(f => row[f] || null);
+      let rowData = fieldNames.map(f => {
+        let value = row[f];
+        if (value instanceof Date) {
+          value = value.toISOString().slice(0, 19).replace('T', ' ');
+        }
+        if (typeof value === 'object' && value !== null) {
+          if (typeof value.toJSON === 'function') {
+            value = value.toJSON();
+          } else {
+            value = JSON.stringify(value);
+          }
+        }
+        return value;
+      });
 
       let { result } = await this.dbQuery(sql, rowData);
       row.id = result.insertId;
@@ -145,10 +156,10 @@ VALUES
     let keys = Object.keys(query.sets);
 
     let params = keys.map(k => query.sets[k]);
-    let placeholder = keys.map(k => `${mysql2.escapeId(k)} = ?`);
+    let placeholder = keys.map(k => `${mysql2.escapeId(k)} = ?`).join(', ');
 
     let [ wheres, data ] = this.getWhere(query);
-    let sql = `UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder.join(', ')} ${wheres}`;
+    let sql = `UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder} ${wheres}`;
     let { result } = await this.dbQuery(sql, params.concat(data));
 
     return result.affectedRows;
