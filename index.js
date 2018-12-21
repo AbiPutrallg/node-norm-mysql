@@ -141,8 +141,7 @@ class Mysql extends Connection {
     let orderBys = [];
     for (let key in query.sorts) {
       let val = query.sorts[key];
-
-      orderBys.push(`${mysql2.escapeId(key)} ${val ? 'ASC' : 'DESC'}`);
+      orderBys.push(`${mysql2.escapeId(key)} ${val > 0 ? 'ASC' : 'DESC'}`);
     }
 
     if (!orderBys.length) {
