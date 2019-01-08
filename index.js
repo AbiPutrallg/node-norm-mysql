@@ -1,6 +1,7 @@
 const Connection = require('node-norm/connection');
 const mysql2 = require('mysql2/promise');
 const debug = require('debug')('node-norm-mysql:index');
+const debugQuery = require('debug')('node-norm-mysql:query');
 
 const OPERATORS = {
   'eq': '=',
@@ -46,6 +47,10 @@ class Mysql extends Connection {
   }
 
   async dbQuery (sql, params) {
+    if (debugQuery.enabled) {
+      debugQuery('SQL %s', sql);
+      debugQuery('??? %o', params);
+    }
     let conn = await this.getConnection();
     let [result, fields] = await conn.execute(sql, params);
     return { result, fields };
@@ -72,17 +77,7 @@ class Mysql extends Connection {
     let changes = 0;
     await Promise.all(query.rows.map(async row => {
       let rowData = fieldNames.map(f => {
-        let value = row[f];
-        if (value instanceof Date) {
-          value = value.toISOString().slice(0, 19).replace('T', ' ');
-        }
-        if (typeof value === 'object' && value !== null) {
-          if (typeof value.toJSON === 'function') {
-            value = value.toJSON();
-          } else {
-            value = JSON.stringify(value);
-          }
-        }
+        let value = this.serialize(row[f]);
         return value;
       });
 
@@ -154,7 +149,7 @@ class Mysql extends Connection {
   async update (query) {
     let keys = Object.keys(query.sets);
 
-    let params = keys.map(k => query.sets[k]);
+    let params = keys.map(k => this.serialize(query.sets[k]));
     let placeholder = keys.map(k => `${mysql2.escapeId(k)} = ?`).join(', ');
 
     let [ wheres, data ] = this.getWhere(query);
@@ -251,6 +246,27 @@ class Mysql extends Connection {
     let conn = await this.getConnection();
     this.connPromise = undefined;
     await conn.end();
+  }
+
+  serialize (value) {
+    if (value === null) {
+      return;
+    }
+
+    if (value instanceof Date) {
+      return value;
+      // return value.toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    if (typeof value === 'object') {
+      if (typeof value.toJSON === 'function') {
+        return value.toJSON();
+      } else {
+        return JSON.stringify(value);
+      }
+    }
+
+    return value;
   }
 }
 

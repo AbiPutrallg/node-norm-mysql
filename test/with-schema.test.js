@@ -139,13 +139,30 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ? )
     let manager = new Manager({ connections: [ config ] });
     try {
       await manager.runSession(async session => {
-        let { affected } = await session.factory('foo', 1).set({ nboolean: false }).save();
+        let { affected } = await session.factory('foo', 1).set({
+          nbig: 12.34,
+          nboolean: false,
+          ndatetime: new Date('2018-11-21 00:00:00'),
+          ndouble: 1.234,
+          ninteger: 1234,
+          nlist: ['foo', 'bar'],
+          nmap: { foo: 'bar' },
+          nstring: 'foobar',
+          nfield: 'custom-field',
+        }).save();
         assert.strictEqual(affected, 1);
       });
 
       let { results } = await query('SELECT * FROM foo WHERE id = 1');
       assert.strictEqual(results.length, 1);
+      assert.strictEqual(results[0].nbig, '12.34');
       assert.strictEqual(results[0].nboolean, 0);
+      assert.strictEqual(results[0].ndatetime.toISOString(), new Date('2018-11-21 00:00:00').toISOString());
+      assert.strictEqual(results[0].ndouble, 1.234);
+      assert.strictEqual(results[0].ninteger, 1234);
+      assert.deepStrictEqual(JSON.parse(results[0].nlist), ['foo', 'bar']);
+      assert.deepStrictEqual(JSON.parse(results[0].nmap), { foo: 'bar' });
+      assert.strictEqual(results[0].nfield, 'custom-field');
     } finally {
       await manager.end();
     }
