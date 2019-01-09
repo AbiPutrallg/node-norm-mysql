@@ -1,0 +1,10 @@
+version: "3"
+services:
+  mysql:
+    image: mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=1
+      - MYSQL_DATABASE=testing
+    ports:
+      - 3306:3306

@@ -1,6 +1,7 @@
 const Connection = require('node-norm/connection');
-const mysql = require('mysql');
+const mysql2 = require('mysql2/promise');
 const debug = require('debug')('node-norm-mysql:index');
+const debugQuery = require('debug')('node-norm-mysql:query');
 
 const OPERATORS = {
   'eq': '=',
@@ -20,44 +21,45 @@ class Mysql extends Connection {
     this.user = user;
     this.password = password;
     this.database = database;
-
-    this.createConnection();
   }
 
-  createConnection () {
-    this.conn = mysql.createConnection(this);
-    this.conn.on('error', this._dberror.bind(this));
+  getConnection () {
+    if (!this.connPromise) {
+      let { host, user, password, database } = this;
+      this.connPromise = mysql2.createConnection({ host, user, password, database });
+      this.connPromise.then(conn => conn.on('error', this.dbOnError.bind(this)));
+    }
+
+    return this.connPromise;
   }
 
-  _dberror (err) {
+  dbOnError (err) {
     debug('Database error', err);
 
     // Connection to the MySQL server is usually
     // lost due to either server restart
     if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-      this.createConnection();
-      return;
+      this.connPromise = undefined;
+      throw new Error('Connection already ended');
     }
 
     throw err;
   }
 
-  _mysqlQuery (sql, params) {
-    return new Promise((resolve, reject) => {
-      this.conn.query(sql, params, (err, result, fields) => {
-        if (err) {
-          return reject(err);
-        }
-
-        resolve({ result, fields });
-      });
-    });
+  async dbQuery (sql, params) {
+    if (debugQuery.enabled) {
+      debugQuery('SQL %s', sql);
+      debugQuery('??? %o', params);
+    }
+    let conn = await this.getConnection();
+    let [result, fields] = await conn.execute(sql, params);
+    return { result, fields };
   }
 
   async insert (query, callback = () => {}) {
     let fieldNames = query.schema.fields.map(field => field.name);
     if (!fieldNames.length) {
-      fieldNames = query._inserts.reduce((fieldNames, row) => {
+      fieldNames = query.rows.reduce((fieldNames, row) => {
         for (let f in row) {
           if (fieldNames.indexOf(f) === -1) {
             fieldNames.push(f);
@@ -67,14 +69,19 @@ class Mysql extends Connection {
       }, []);
     }
 
-    let placeholder = fieldNames.map(f => '?');
-    let sql = `INSERT INTO ${query.schema.name} (${fieldNames.join(',')}) VALUES (${placeholder})`;
+    let placeholder = fieldNames.map(f => '?').join(', ');
+    let sql = `INSERT INTO ${mysql2.escapeId(query.schema.name)}` +
+      ` (${fieldNames.map(f => mysql2.escapeId(f)).join(', ')})` +
+      ` VALUES (${placeholder})`;
 
     let changes = 0;
-    await Promise.all(query._inserts.map(async row => {
-      let rowData = fieldNames.map(f => row[f]);
+    await Promise.all(query.rows.map(async row => {
+      let rowData = fieldNames.map(f => {
+        let value = this.serialize(row[f]);
+        return value;
+      });
 
-      let { result } = await this._mysqlQuery(sql, rowData);
+      let { result } = await this.dbQuery(sql, rowData);
       row.id = result.insertId;
       changes += result.affectedRows;
 
@@ -85,7 +92,7 @@ class Mysql extends Connection {
   }
 
   async load (query, callback = () => {}) {
-    let sqlArr = [ `SELECT * FROM ${mysql.escapeId(query.schema.name)}` ];
+    let sqlArr = [ `SELECT * FROM ${mysql2.escapeId(query.schema.name)}` ];
     let [ wheres, data ] = this.getWhere(query);
     if (wheres) {
       sqlArr.push(wheres);
@@ -96,17 +103,17 @@ class Mysql extends Connection {
       sqlArr.push(orderBys);
     }
 
-    if (query._limit >= 0) {
-      sqlArr.push(`LIMIT ${query._limit}`);
+    if (query.limit >= 0) {
+      sqlArr.push(`LIMIT ${query.limit}`);
 
-      if (query._skip > 0) {
-        sqlArr.push(`OFFSET ${query._skip}`);
+      if (query.skip > 0) {
+        sqlArr.push(`OFFSET ${query.skip}`);
       }
     }
 
     let sql = sqlArr.join(' ');
 
-    let { result } = await this._mysqlQuery(sql, data);
+    let { result } = await this.dbQuery(sql, data);
     return result.map(row => {
       callback(row);
       return row;
@@ -115,22 +122,21 @@ class Mysql extends Connection {
 
   async delete (query, callback) {
     let [ wheres, data ] = this.getWhere(query);
-    let sqlArr = [`DELETE FROM ${query.schema.name}`];
+    let sqlArr = [`DELETE FROM ${mysql2.escapeId(query.schema.name)}`];
     if (wheres) {
       sqlArr.push(wheres);
     }
 
     let sql = sqlArr.join(' ');
 
-    await this._mysqlQuery(sql, data);
+    await this.dbQuery(sql, data);
   }
 
   getOrderBy (query) {
     let orderBys = [];
-    for (let key in query._sorts) {
-      let val = query._sorts[key];
-
-      orderBys.push(`${mysql.escapeId(key)} ${val ? 'ASC' : 'DESC'}`);
+    for (let key in query.sorts) {
+      let val = query.sorts[key];
+      orderBys.push(`${mysql2.escapeId(key)} ${val > 0 ? 'ASC' : 'DESC'}`);
     }
 
     if (!orderBys.length) {
@@ -141,41 +147,41 @@ class Mysql extends Connection {
   }
 
   async update (query) {
-    let keys = Object.keys(query._sets);
+    let keys = Object.keys(query.sets);
 
-    let params = keys.map(k => query._sets[k]);
-    let placeholder = keys.map(k => `${mysql.escapeId(k)} = ?`);
+    let params = keys.map(k => this.serialize(query.sets[k]));
+    let placeholder = keys.map(k => `${mysql2.escapeId(k)} = ?`).join(', ');
 
     let [ wheres, data ] = this.getWhere(query);
-    let sql = `UPDATE ${mysql.escapeId(query.schema.name)} SET ${placeholder.join(', ')} ${wheres}`;
-    let { result } = await this._mysqlQuery(sql, params.concat(data));
+    let sql = `UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder} ${wheres}`;
+    let { result } = await this.dbQuery(sql, params.concat(data));
 
     return result.affectedRows;
   }
 
-  getOr(query){
+  getOr (query) {
     let wheres = [];
     let data = [];
     for (let i = 0; i < query.length; i++) {
-        let key = Object.keys(query[i])[0];
-        let value = Object.values(query[i])[0];
-        let [ field, operator = 'eq' ] = key.split('!');
-        if(operator == 'like'){
-          value ='%'+value +'%';
-        }
-        data.push(value);
-        wheres.push(`${field} ${OPERATORS[operator]} ?`);
+      let key = Object.keys(query[i])[0];
+      let value = Object.values(query[i])[0];
+      let [ field, operator = 'eq' ] = key.split('!');
+      if (operator === 'like') {
+        value = '%' + value + '%';
+      }
+      data.push(value);
+      wheres.push(`${field} ${OPERATORS[operator]} ?`);
     }
-    return {where : `(${wheres.join(' OR ')})`,data:data };
+    return { where: `(${wheres.join(' OR ')})`, data: data };
   }
 
   getWhere (query) {
     let wheres = [];
     let data = [];
-    for (let key in query._criteria) {
-      let value = query._criteria[key];
+    for (let key in query.criteria) {
+      let value = query.criteria[key];
       let [ field, operator = 'eq' ] = key.split('!');
-      if(key === '!or'){
+      if (key === '!or') {
         let or = this.getOr(value);
         wheres.push(or.where);
         data = data.concat(or.data);
@@ -188,7 +194,7 @@ class Mysql extends Connection {
       }
 
       data.push(value);
-      wheres.push(`${mysql.escapeId(field)} ${OPERATORS[operator]} ?`);
+      wheres.push(`${mysql2.escapeId(field)} ${OPERATORS[operator]} ?`);
     }
 
     if (!wheres.length) {
@@ -198,37 +204,69 @@ class Mysql extends Connection {
     return [ `WHERE ${wheres.join(' AND ')}`, data ];
   }
 
-  begin () {
-    return new Promise((resolve, reject) => {
-      this.conn.beginTransaction(err => {
-        if (err) {
-          return reject(err);
-        }
-        resolve();
-      });
-    });
+  async _begin () {
+    let conn = await this.getConnection();
+    await conn.beginTransaction();
   }
 
-  commit () {
-    return new Promise((resolve, reject) => {
-      this.conn.commit(err => {
-        if (err) {
-          return reject(err);
-        }
-        resolve();
-      });
-    });
+  async _commit () {
+    let conn = await this.getConnection();
+    await conn.commit();
   }
 
-  rollback () {
-    return new Promise((resolve, reject) => {
-      this.conn.rollback(err => {
-        if (err) {
-          return reject(err);
+  async _rollback () {
+    let conn = await this.getConnection();
+    await conn.rollback();
+  }
+
+  async count (query, useSkipAndLimit = false) {
+    let sqlArr = [ `SELECT count(*) AS ${mysql2.escapeId('count')} FROM ${mysql2.escapeId(query.schema.name)}` ];
+    let [ wheres, data ] = this.getWhere(query);
+    if (wheres) {
+      sqlArr.push(wheres);
+    }
+
+    if (useSkipAndLimit) {
+      if (query.length >= 0) {
+        sqlArr.push(`LIMIT ${query.length}`);
+
+        if (query.offset > 0) {
+          sqlArr.push(`OFFSET ${query.offset}`);
         }
-        resolve();
-      });
-    });
+      }
+    }
+
+    let sql = sqlArr.join(' ');
+
+    let { result: [ row ] } = await this.dbQuery(sql, data);
+    return row.count;
+  }
+
+  async end () {
+    let conn = await this.getConnection();
+    this.connPromise = undefined;
+    await conn.end();
+  }
+
+  serialize (value) {
+    if (value === null) {
+      return;
+    }
+
+    if (value instanceof Date) {
+      return value;
+      // return value.toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    if (typeof value === 'object') {
+      if (typeof value.toJSON === 'function') {
+        return value.toJSON();
+      } else {
+        return JSON.stringify(value);
+      }
+    }
+
+    return value;
   }
 }
 

@@ -1,6 +1,6 @@
 const assert = require('assert');
-const mysql = require('mysql');
-const Manager = require('node-norm');
+const mysql2 = require('mysql2/promise');
+const { Manager } = require('node-norm');
 
 const config = {
   adapter: require('../'),
@@ -10,21 +10,15 @@ const config = {
   database: process.env.DB_DATABASE || 'testing',
 };
 
-const conn = mysql.createConnection(config);
-
-function query (sql, params) {
-  return new Promise((resolve, reject) => {
-    conn.query(sql, params, (err, results, fields) => {
-      if (err) return reject(err);
-
-      resolve({ results, fields });
-    });
-  });
+async function query (sql, params) {
+  let { host, user, password, database } = config;
+  let conn = await mysql2.createConnection({ host, user, password, database });
+  let [ results, fields ] = await conn.query(sql, params);
+  await conn.end();
+  return { results, fields };
 }
 
 describe('cases', () => {
-  let manager;
-
   beforeEach(async () => {
     await query('DROP TABLE IF EXISTS foo');
     await query(`
@@ -35,10 +29,7 @@ describe('cases', () => {
         PRIMARY KEY (id)
       )
     `);
-
     await query('INSERT INTO foo (foo) VALUES (?), (?)', ['pre1', 'pre2']);
-
-    manager = new Manager({ connections: [ config ] });
   });
 
   afterEach(async () => {
@@ -46,39 +37,76 @@ describe('cases', () => {
   });
 
   it('create new record', async () => {
-    await manager.runSession(async session => {
-      let { inserted, rows } = await session.factory('foo').insert({ foo: 'bar' }).insert({ foo: 'bar1' }).save();
-      assert.strictEqual(inserted, 2);
-      assert.strictEqual(rows.length, 2);
+    let manager = new Manager({ connections: [ config ] });
+
+    try {
+      await manager.runSession(async session => {
+        let { affected, rows } = await session.factory('foo')
+          .insert({ foo: 'bar' })
+          .insert({ foo: 'baz' })
+          .save();
+        assert.strictEqual(affected, 2);
+        assert.strictEqual(rows.length, 2);
+      });
 
       let { results } = await query('SELECT * from foo');
       assert.strictEqual(results.length, 4);
-    });
+    } finally {
+      await manager.end();
+    }
   });
 
   it('read record', async () => {
-    await manager.runSession(async session => {
-      let foos = await session.factory('foo').all();
-      assert.strictEqual(foos.length, 2);
-    });
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let foos = await session.factory('foo').all();
+        assert.strictEqual(foos.length, 2);
+      });
+    } finally {
+      await manager.end();
+    }
   });
 
   it('update record', async () => {
-    await manager.runSession(async session => {
-      let { affected } = await session.factory('foo', 2).set({ foo: 'bar' }).save();
-      assert.strictEqual(affected, 1);
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let { affected } = await session.factory('foo', 2).set({ foo: 'bar' }).save();
+        assert.strictEqual(affected, 1);
+      });
+
       let { results } = await query('SELECT * FROM foo WHERE id = 2');
       assert.strictEqual(results.length, 1);
       assert.strictEqual(results[0].foo, 'bar');
-    });
+    } finally {
+      await manager.end();
+    }
   });
 
   it('delete record', async () => {
-    await manager.runSession(async session => {
-      await session.factory('foo').delete();
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        await session.factory('foo').delete();
+      });
 
       let { results } = await query('SELECT * FROM foo');
       assert.strictEqual(results.length, 0);
-    });
+    } finally {
+      await manager.end();
+    }
+  });
+
+  it('count record', async () => {
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let count = await session.factory('foo').count();
+        assert.strictEqual(count, 2);
+      });
+    } finally {
+      await manager.end();
+    }
   });
 });
