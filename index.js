@@ -250,7 +250,7 @@ class Mysql extends Connection {
 
   serialize (value) {
     if (value === null) {
-      return;
+      return value;
     }
 
     if (value instanceof Date) {
