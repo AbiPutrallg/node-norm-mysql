@@ -6,7 +6,7 @@ const config = {
   adapter: require('../'),
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
+  password: process.env.DB_PASSWORD || 'password',
   database: process.env.DB_DATABASE || 'testing',
 };
 
@@ -30,6 +30,8 @@ describe('cases', () => {
       )
     `);
     await query('INSERT INTO foo (foo) VALUES (?), (?)', ['pre1', 'pre2']);
+    await query('INSERT INTO foo (foo) VALUES (?), (?)', ['pre3', 'pre4']);
+    await query('INSERT INTO foo (foo) VALUES (?), (?)', ['pre5', 'pre6']);
   });
 
   afterEach(async () => {
@@ -104,6 +106,30 @@ describe('cases', () => {
       await manager.runSession(async session => {
         let count = await session.factory('foo').count();
         assert.strictEqual(count, 2);
+      });
+    } finally {
+      await manager.end();
+    }
+  });
+
+  it.only('check limit and offset', async () => {
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let data = await session.factory('foo').limit(1).skip(3).all();
+        assert.strictEqual(data.length, 1);
+      });
+    } finally {
+      await manager.end();
+    }
+  });
+
+  it.only('check  offset without limit', async () => {
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let data = await session.factory('foo').skip(3).all();
+        assert.strictEqual(data.length, 3);
       });
     } finally {
       await manager.end();

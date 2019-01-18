@@ -103,12 +103,16 @@ class Mysql extends Connection {
       sqlArr.push(orderBys);
     }
 
-    if (query.limit >= 0) {
-      sqlArr.push(`LIMIT ${query.limit}`);
+    // mysql behavior if limit not set and skip set, limit will set default to 1000
+    if (query.length < 0 && query.offset > 0) {
+      query.length = 1000;
+    }
 
-      if (query.skip > 0) {
-        sqlArr.push(`OFFSET ${query.skip}`);
-      }
+    if (query.length > 0) {
+      sqlArr.push(`LIMIT ${query.length}`);
+    }
+    if (query.offset > 0) {
+      sqlArr.push(`OFFSET ${query.offset}`);
     }
 
     let sql = sqlArr.join(' ');
