@@ -135,4 +135,15 @@ describe('cases', () => {
       await manager.end();
     }
   });
+  it.only('check  without offset without limit', async () => {
+    let manager = new Manager({ connections: [ config ] });
+    try {
+      await manager.runSession(async session => {
+        let data = await session.factory('foo').all();
+        assert.strictEqual(data.length, 6);
+      });
+    } finally {
+      await manager.end();
+    }
+  });
 });
