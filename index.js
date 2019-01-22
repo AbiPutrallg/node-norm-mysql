@@ -24,6 +24,12 @@ class Mysql extends Connection {
   }
 
   getConnection () {
+    debug('Deprecated #getConnection(), use #getRaw() instead');
+
+    return this.getRaw();
+  }
+
+  getRaw () {
     if (!this.connPromise) {
       let { host, user, password, database } = this;
       this.connPromise = mysql2.createConnection({ host, user, password, database });
@@ -46,12 +52,18 @@ class Mysql extends Connection {
     throw err;
   }
 
-  async dbQuery (sql, params) {
+  dbQuery (sql, params) {
+    debug('Deprecated #dbQuery(), use #rawQuery() instead');
+
+    return this.rawQuery(sql, params);
+  }
+
+  async rawQuery (sql, params) {
     if (debugQuery.enabled) {
       debugQuery('SQL %s', sql);
       debugQuery('??? %o', params);
     }
-    let conn = await this.getConnection();
+    let conn = await this.getRaw();
     let [result, fields] = await conn.execute(sql, params);
     return { result, fields };
   }
@@ -81,7 +93,7 @@ class Mysql extends Connection {
         return value;
       });
 
-      let { result } = await this.dbQuery(sql, rowData);
+      let { result } = await this.rawQuery(sql, rowData);
       row.id = result.insertId;
       changes += result.affectedRows;
 
@@ -117,7 +129,7 @@ class Mysql extends Connection {
 
     let sql = sqlArr.join(' ');
 
-    let { result } = await this.dbQuery(sql, data);
+    let { result } = await this.rawQuery(sql, data);
     return result.map(row => {
       callback(row);
       return row;
@@ -133,7 +145,7 @@ class Mysql extends Connection {
 
     let sql = sqlArr.join(' ');
 
-    await this.dbQuery(sql, data);
+    await this.rawQuery(sql, data);
   }
 
   getOrderBy (query) {
@@ -158,7 +170,7 @@ class Mysql extends Connection {
 
     let [ wheres, data ] = this.getWhere(query);
     let sql = `UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder} ${wheres}`;
-    let { result } = await this.dbQuery(sql, params.concat(data));
+    let { result } = await this.rawQuery(sql, params.concat(data));
 
     return result.affectedRows;
   }
@@ -209,17 +221,17 @@ class Mysql extends Connection {
   }
 
   async _begin () {
-    let conn = await this.getConnection();
+    let conn = await this.getRaw();
     await conn.beginTransaction();
   }
 
   async _commit () {
-    let conn = await this.getConnection();
+    let conn = await this.getRaw();
     await conn.commit();
   }
 
   async _rollback () {
-    let conn = await this.getConnection();
+    let conn = await this.getRaw();
     await conn.rollback();
   }
 
@@ -242,12 +254,12 @@ class Mysql extends Connection {
 
     let sql = sqlArr.join(' ');
 
-    let { result: [ row ] } = await this.dbQuery(sql, data);
+    let { result: [ row ] } = await this.rawQuery(sql, data);
     return row.count;
   }
 
   async end () {
-    let conn = await this.getConnection();
+    let conn = await this.getRaw();
     this.connPromise = undefined;
     await conn.end();
   }

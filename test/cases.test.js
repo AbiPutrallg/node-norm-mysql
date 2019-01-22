@@ -6,7 +6,7 @@ const config = {
   adapter: require('../'),
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || 'testing',
 };
 
@@ -52,7 +52,7 @@ describe('cases', () => {
       });
 
       let { results } = await query('SELECT * from foo');
-      assert.strictEqual(results.length, 4);
+      assert.strictEqual(results.length, 8);
     } finally {
       await manager.end();
     }
@@ -63,7 +63,7 @@ describe('cases', () => {
     try {
       await manager.runSession(async session => {
         let foos = await session.factory('foo').all();
-        assert.strictEqual(foos.length, 2);
+        assert.strictEqual(foos.length, 6);
       });
     } finally {
       await manager.end();
@@ -105,14 +105,14 @@ describe('cases', () => {
     try {
       await manager.runSession(async session => {
         let count = await session.factory('foo').count();
-        assert.strictEqual(count, 2);
+        assert.strictEqual(count, 6);
       });
     } finally {
       await manager.end();
     }
   });
 
-  it.only('check limit and offset', async () => {
+  it('check limit and offset', async () => {
     let manager = new Manager({ connections: [ config ] });
     try {
       await manager.runSession(async session => {
@@ -124,7 +124,7 @@ describe('cases', () => {
     }
   });
 
-  it.only('check  offset without limit', async () => {
+  it('check  offset without limit', async () => {
     let manager = new Manager({ connections: [ config ] });
     try {
       await manager.runSession(async session => {
@@ -135,7 +135,7 @@ describe('cases', () => {
       await manager.end();
     }
   });
-  it.only('check  without offset without limit', async () => {
+  it('check  without offset without limit', async () => {
     let manager = new Manager({ connections: [ config ] });
     try {
       await manager.runSession(async session => {
