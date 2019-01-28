@@ -168,9 +168,16 @@ class Mysql extends Connection {
     let params = keys.map(k => this.serialize(query.sets[k]));
     let placeholder = keys.map(k => `${mysql2.escapeId(k)} = ?`).join(', ');
 
+    let sqlArr = [`UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder}`];
     let [ wheres, data ] = this.getWhere(query);
-    let sql = `UPDATE ${mysql2.escapeId(query.schema.name)} SET ${placeholder} ${wheres}`;
-    let { result } = await this.rawQuery(sql, params.concat(data));
+    if (wheres) {
+      sqlArr.push(wheres);
+      params = params.concat(data);
+    }
+
+    let sql = sqlArr.join(' ');
+
+    let { result } = await this.rawQuery(sql, params);
 
     return result.affectedRows;
   }
@@ -186,9 +193,9 @@ class Mysql extends Connection {
         value = '%' + value + '%';
       }
       data.push(value);
-      wheres.push(`${field} ${OPERATORS[operator]} ?`);
+      wheres.push(`${mysql2.escapeId(field)} ${OPERATORS[operator]} ?`);
     }
-    return { where: `(${wheres.join(' OR ')})`, data: data };
+    return { where: `(${wheres.join(' OR ')})`, data };
   }
 
   getWhere (query) {
@@ -196,13 +203,15 @@ class Mysql extends Connection {
     let data = [];
     for (let key in query.criteria) {
       let value = query.criteria[key];
-      let [ field, operator = 'eq' ] = key.split('!');
+
       if (key === '!or') {
         let or = this.getOr(value);
         wheres.push(or.where);
         data = data.concat(or.data);
         continue;
       }
+
+      let [ field, operator = 'eq' ] = key.split('!');
 
       // add by januar: for chek if operator like value change to %
       if (operator === 'like') {
